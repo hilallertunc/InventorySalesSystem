@@ -1,52 +1,96 @@
 ﻿using InventorySales.Domain.Entities;
 using InventorySales.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using InventorySales.Infrastructure.Repositories.Base;
 
 namespace InventorySales.Infrastructure.Repositories;
 
-public class ProductRepository
+public class ProductRepository : BaseRepository<Product>
 {
-    private readonly AppDbContext _context;
 
-    public ProductRepository(AppDbContext context)
+    public ProductRepository(AppDbContext context) : base(context)
     {
-        _context = context;
     }
-
-    // create
-    public async Task AddAsync(Product product)
+    // product list
+    public async Task<List<Product>> GetAllWithCategoryAsync()
     {
-        _context.Products.Add(product);
-        await _context.SaveChangesAsync();
+        return await _context.Products.Include( p=> p.Category).ToListAsync();
     }
-
-    // read-all
-    public async Task<List<Product>> GetAllAsync()
+    //product registration
+    public async Task<Product?> GetByIdWithCategoryAsync(int id)
     {
-        return await _context.Products
-            .Include(p => p.Category)
+        return await _context.Products.Include(p=> p.Category).FirstOrDefaultAsync(p=> p.Id == id);
+    }
+    // paging
+    public async Task<(List<Product> Items, int TotalCount)> GetPagedWithCategoryAsync(int pageNumber, int pageSize)
+    {
+        if (pageNumber < 1) pageNumber = 1;
+        if (pageSize < 1) pageSize = 10;
+
+        var query = _context.Products.Include(p => p.Category);
+        var totalCount = await query.CountAsync();
+
+        var items = await query
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
+        return (items, totalCount);
+    }
+    public async Task<bool> AnyByCategoryIdAsync(int categoryId)
+    {
+        return await _context.Products.AnyAsync(p => p.CategoryId == categoryId);
     }
 
-    // read-by id
-    public async Task<Product?> GetByIdAsync(int id)
+    public async Task<(List<Product> Items, int TotalCount)> GetPagedFilteredWithCategoryAsync(
+        int pageNumber,
+        int pageSize,
+        string? search,
+        int? categoryId,
+        decimal? minPrice,
+        decimal? maxPrice,
+        string? sortBy,
+        string? sortDir
+        )
     {
-        return await _context.Products
-            .Include(p => p.Category)
-            .FirstOrDefaultAsync(p => p.Id == id); //Categories along with products
-    }
+        if (pageNumber < 1)
+            pageNumber = 1;
+        if(pageSize < 1)
+            pageSize = 10;
+        var query = _context.Products.Include(p => p.Category).AsQueryable();
 
-    // update
-    public async Task UpdateAsync(Product product)
-    {
-        _context.Products.Update(product);
-        await _context.SaveChangesAsync();
-    }
+        // name search
+        if(!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            query = query.Where(p => p.Name.ToLower().Contains(s));
+        }
 
-    // delete
-    public async Task DeleteAsync(Product product)
-    {
-        _context.Products.Remove(product);
-        await _context.SaveChangesAsync();
+        // category filter
+        if (categoryId.HasValue)
+            query = query.Where(p => p.CategoryId == categoryId.Value);
+
+        // price range filter
+        if (minPrice.HasValue)
+            query = query.Where(p => p.Price >= minPrice.Value);
+        if (maxPrice.HasValue)
+            query = query.Where(p => p.Price <= maxPrice.Value);
+        var desc = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
+        query = (sortBy?.ToLower()) switch
+        {
+            "price" => desc ? query.OrderByDescending(p => p.Price) : query.OrderBy(p => p.Price),
+            "name" => desc ? query.OrderByDescending(p => p.Name) : query.OrderBy(p => p.Name),
+            "stock" => desc ? query.OrderByDescending(p => p.Stock) : query.OrderBy(p => p.Stock),
+            _ => query.OrderBy(p => p.Id)
+        };
+
+        var totalCount = await query.CountAsync();
+
+        var items = await query
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return (items, totalCount);
+
     }
 }

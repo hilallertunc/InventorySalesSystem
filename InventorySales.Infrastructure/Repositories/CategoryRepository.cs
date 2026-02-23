@@ -1,30 +1,20 @@
 ﻿using InventorySales.Domain.Entities;
 using InventorySales.Infrastructure.Data;
+using InventorySales.Infrastructure.Repositories.Base;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace InventorySales.Infrastructure.Repositories
 {
-    public class CategoryRepository
+    public class CategoryRepository : BaseRepository<Category>
     {
-        private readonly AppDbContext _context;
-
-        public CategoryRepository(AppDbContext context)
+        public CategoryRepository(AppDbContext context) : base(context)
         {
-            _context = context;
         }
 
-        public async Task AddAsync(Category category)
+        
+        public async Task<bool> ExistsAsync(int id)
         {
-            _context.Categories.Add(category);
-            await _context.SaveChangesAsync();
-        }
-
-        public async Task<List<Category>> GetAllAsync()
-        {
-            return await _context.Categories.ToListAsync();
+            return await _context.Categories.AnyAsync(c => c.Id == id);
         }
     }
 }

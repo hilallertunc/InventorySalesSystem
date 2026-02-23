@@ -1,12 +1,12 @@
-﻿using System;
+﻿using InventorySales.Domain.Entities.Common;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
 namespace InventorySales.Domain.Entities
 {
-    public class Product
+    public class Product: BaseEntity
     {
-        public int Id { get; set; }
         public string Name { get; set; } = default!;
         public decimal Price { get; set; }
         public int Stock { get; set; }
