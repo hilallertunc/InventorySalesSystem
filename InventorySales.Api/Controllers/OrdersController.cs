@@ -17,7 +17,7 @@ namespace InventorySales.Api.Controllers
             _orderService = orderService;
         }
 
-        // User veya Admin sipariş oluşturabilir
+        // user or admin
         [Authorize(Roles = "User,Admin")]
         [HttpPost]
         public async Task<IActionResult> Create(OrderCreateRequest request)
@@ -37,7 +37,7 @@ namespace InventorySales.Api.Controllers
             }
         }
 
-        // Admin iptal etsin 
+        // admin cancel
         [Authorize(Roles = "Admin")]
         [HttpPost("{id}/cancel")]
         public async Task<IActionResult> Cancel(int id)
