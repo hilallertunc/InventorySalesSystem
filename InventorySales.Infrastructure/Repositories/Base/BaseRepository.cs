@@ -56,5 +56,9 @@ namespace InventorySales.Infrastructure.Repositories.Base
 
             return (items, totalCount);
         }
+        public IQueryable<TEntity> GetQueryable()
+        {
+            return _dbSet.AsQueryable();
+        }
     }
 }

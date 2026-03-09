@@ -4,6 +4,7 @@ using InventorySales.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using System.Threading.Tasks;
 
 namespace InventorySales.Api.Controllers
 {
@@ -38,12 +39,10 @@ namespace InventorySales.Api.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var email = User.FindFirstValue(ClaimTypes.Email);
-            var result = await _productService.DeleteAsync(id, deletedBy: email);
+            var result = await _productService.DeleteAsync(id);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        // sdmin
         [Authorize(Roles = "Admin")]
         [HttpPost("{id}/restore")]
         public async Task<IActionResult> Restore(int id)
@@ -52,7 +51,6 @@ namespace InventorySales.Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        
         [HttpGet]
         public async Task<IActionResult> GetAll(
             [FromQuery] int pageNumber = 1,
@@ -66,20 +64,18 @@ namespace InventorySales.Api.Controllers
             [FromQuery] bool includeDeleted = false,
             [FromQuery] bool onlyDeleted = false)
         {
+            // only admin
+            if ((includeDeleted || onlyDeleted) && !User.IsInRole("Admin"))
+            {
+                return Forbid(); 
+            }
+
             var paging = new PagingRequest { PageNumber = pageNumber, PageSize = pageSize };
 
             var result = await _productService.GetPagedAsync(
-                paging,
-                search,
-                categoryId,
-                minPrice,
-                maxPrice,
-                sortBy,
-                sortDir,
-                includeDeleted,
-                onlyDeleted);
+                paging, search, categoryId, minPrice, maxPrice, sortBy, sortDir, includeDeleted, onlyDeleted);
 
-            return Ok(result);
+            return result.IsSuccess ? Ok(result.Data) : BadRequest(result);
         }
     }
 }

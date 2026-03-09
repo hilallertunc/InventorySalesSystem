@@ -1,6 +1,11 @@
-﻿using InventorySales.Application.DTOs.Order;
+﻿using InventorySales.Application.DTOs.Common;
+using InventorySales.Application.DTOs.Order;
 using InventorySales.Domain.Entities.Orders;
 using InventorySales.Infrastructure.Repositories;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace InventorySales.Application.Services
 {
@@ -15,10 +20,10 @@ namespace InventorySales.Application.Services
             _productRepository = productRepository;
         }
 
-        public async Task<OrderResponse> CreateAsync(string userId, OrderCreateRequest request)
+        public async Task<Result<OrderResponse>> CreateAsync(string userId, OrderCreateRequest request)
         {
             if (request.Items == null || request.Items.Count == 0)
-                throw new ArgumentException("Order items cannot be left blank.");
+                return Result<OrderResponse>.Failure("Order items cannot be left blank.");
 
             await using var tx = await _orderRepository.BeginTransactionAsync();
 
@@ -27,32 +32,26 @@ namespace InventorySales.Application.Services
                 var order = new Order
                 {
                     UserId = userId,
-                    Status = OrderStatus.Created,
-                    CreatedAtUtc = DateTime.UtcNow
+                    Status = OrderStatus.Created
                 };
 
-                // product name
                 var responseItems = new List<OrderItemResponse>();
 
                 foreach (var item in request.Items)
                 {
                     if (item.Quantity <= 0)
-                        throw new ArgumentException("The quantity cannot be 0 or negative.");
+                        return Result<OrderResponse>.Failure("The quantity cannot be 0 or negative.");
 
                     var product = await _productRepository.GetByIdAsync(item.ProductId);
                     if (product is null)
-                        throw new ArgumentException($"Product not found. ProductId={item.ProductId}");
+                        return Result<OrderResponse>.Failure($"Product not found. ProductId={item.ProductId}");
 
                     if (product.Stock < item.Quantity)
-                        throw new ArgumentException(
-                            $"Stock is insufficient. Product={product.Name}, Stock={product.Stock}, Desired={item.Quantity}"
-                        );
+                        return Result<OrderResponse>.Failure($"Stock is insufficient. Product={product.Name}, Stock={product.Stock}, Desired={item.Quantity}");
 
-                    // stock drop
                     product.Stock -= item.Quantity;
                     await _productRepository.UpdateAsync(product);
 
-                    // order line (db)
                     order.Items.Add(new OrderItem
                     {
                         ProductId = product.Id,
@@ -60,11 +59,10 @@ namespace InventorySales.Application.Services
                         UnitPrice = product.Price
                     });
 
-                    // response line(user)
                     responseItems.Add(new OrderItemResponse
                     {
                         ProductId = product.Id,
-                        ProductName = product.Name, 
+                        ProductName = product.Name,
                         Quantity = item.Quantity,
                         UnitPrice = product.Price
                     });
@@ -75,7 +73,7 @@ namespace InventorySales.Application.Services
 
                 var total = responseItems.Sum(i => i.UnitPrice * i.Quantity);
 
-                return new OrderResponse
+                var orderResponse = new OrderResponse
                 {
                     Id = order.Id,
                     Status = order.Status.ToString(),
@@ -83,15 +81,17 @@ namespace InventorySales.Application.Services
                     Total = total,
                     Items = responseItems
                 };
+
+                return Result<OrderResponse>.Success(orderResponse, "Order created successfully");
             }
-            catch
+            catch (Exception ex)
             {
                 await tx.RollbackAsync();
-                throw;
+                return Result<OrderResponse>.Failure($"An error occurred: {ex.Message}");
             }
         }
 
-        public async Task CancelAsync(int orderId)
+        public async Task<Result> CancelAsync(int orderId)
         {
             await using var tx = await _orderRepository.BeginTransactionAsync();
 
@@ -99,18 +99,16 @@ namespace InventorySales.Application.Services
             {
                 var order = await _orderRepository.GetByIdWithItemsAsync(orderId);
                 if (order is null)
-                    throw new ArgumentException("Sipariş bulunamadı.");
+                    return Result.Failure("Sipariş bulunamadı.");
 
                 if (order.Status == OrderStatus.Cancelled)
-                    throw new ArgumentException("Sipariş zaten iptal.");
+                    return Result.Failure("Sipariş zaten iptal.");
 
-                // add stock
                 foreach (var item in order.Items)
                 {
-                    
                     var product = item.Product ?? await _productRepository.GetByIdAsync(item.ProductId);
                     if (product is null)
-                        throw new ArgumentException($"Product bulunamadı. ProductId={item.ProductId}");
+                        return Result.Failure($"Product bulunamadı. ProductId={item.ProductId}");
 
                     product.Stock += item.Quantity;
                     await _productRepository.UpdateAsync(product);
@@ -120,11 +118,12 @@ namespace InventorySales.Application.Services
                 await _orderRepository.SaveAsync();
 
                 await tx.CommitAsync();
+                return Result.Success("Order cancelled");
             }
-            catch
+            catch (Exception ex)
             {
                 await tx.RollbackAsync();
-                throw;
+                return Result.Failure($"An error occurred: {ex.Message}");
             }
         }
     }

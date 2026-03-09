@@ -4,8 +4,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using InventorySales.Application.DTOs.Common;
 using InventorySales.Application.DTOs.Product;
+using InventorySales.Application.Extensions;
 using InventorySales.Domain.Entities;
 using InventorySales.Infrastructure.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace InventorySales.Application.Services;
 
@@ -20,23 +22,20 @@ public class ProductService
         _categoryRepository = categoryRepository;
     }
 
-    public async Task CreateAsync(ProductCreateRequest request)
+    public async Task<Result> CreateAsync(ProductCreateRequest request)
     {
-        // rule control
         if (string.IsNullOrWhiteSpace(request.Name))
-            throw new ArgumentException("Product names cannot be left blank.");
+            return Result.Failure("Product names cannot be left blank.");
 
         if (request.Price <= 0)
-            throw new ArgumentException("The price cannot be 0 or negative.");
+            return Result.Failure("The price cannot be 0 or negative.");
 
         if (request.Stock < 0)
-            throw new ArgumentException("The stock cannot be negative.");
+            return Result.Failure("The stock cannot be negative.");
 
-        // category 
         var category = await _categoryRepository.GetByIdAsync(request.CategoryId);
         if (category == null)
-            throw new ArgumentException("Invalid CategoryId.");
-
+            return Result.Failure("Invalid CategoryId.");
 
         var product = new Product
         {
@@ -47,27 +46,27 @@ public class ProductService
         };
 
         await _productRepository.AddAsync(product);
+        return Result.Success("Product created successfully.");
     }
 
-    // update
-    public async Task UpdateAsync(int id, ProductUpdateRequest request)
+    public async Task<Result> UpdateAsync(int id, ProductUpdateRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
-            throw new ArgumentException("Product names cannot be left blank.");
+            return Result.Failure("Product names cannot be left blank.");
 
         if (request.Price <= 0)
-            throw new ArgumentException("The price cannot be 0 or negative.");
+            return Result.Failure("The price cannot be 0 or negative.");
 
         if (request.Stock < 0)
-            throw new ArgumentException("The stock cannot be negative.");
+            return Result.Failure("The stock cannot be negative.");
 
         var product = await _productRepository.GetByIdAsync(id);
         if (product is null)
-            throw new ArgumentException("Product not found.");
+            return Result.Failure("Product not found.");
 
         var category = await _categoryRepository.GetByIdAsync(request.CategoryId);
         if (category is null)
-            throw new ArgumentException("Geçersiz CategoryId.");
+            return Result.Failure("Invalid CategoryId.");
 
         product.Name = request.Name.Trim();
         product.Price = request.Price;
@@ -75,65 +74,98 @@ public class ProductService
         product.CategoryId = request.CategoryId;
 
         await _productRepository.UpdateAsync(product);
+        return Result.Success("Product updated successfully.");
     }
 
-    // delete
-    public async Task DeleteAsync(int id)
+    public async Task<Result> DeleteAsync(int id)
     {
         var product = await _productRepository.GetByIdAsync(id);
         if (product is null)
-            throw new ArgumentException("Product not found.");
+            return Result.Failure("Product not found.");
 
         await _productRepository.DeleteAsync(product);
+        return Result.Success("Product deleted successfully.");
     }
 
-    // paginated listing
-    public async Task<PagedResult<ProductResponse>> GetPagedAsync(
-        int pageNumber,
-        int pageSize,
+    public async Task<Result> RestoreAsync(int id)
+    {
+        
+        var query = _productRepository.GetProductsWithCategoryQuery().IgnoreQueryFilters();
+        var product = await query.FirstOrDefaultAsync(p => p.Id == id);
+
+        if (product is null)
+            return Result.Failure("Product not found.");
+
+        product.IsDeleted = false;
+        await _productRepository.UpdateAsync(product);
+        return Result.Success("Product restored successfully.");
+    }
+
+    public async Task<Result<PagedResult<ProductResponse>>> GetPagedAsync(
+        PagingRequest pagingRequest,
         string? search,
         int? categoryId,
         decimal? minPrice,
         decimal? maxPrice,
         string? sortBy,
-        string? sortDir
-        )
+        string? sortDir,
+        bool includeDeleted = false,
+        bool onlyDeleted = false)
     {
-        var (items, totalCount) = await _productRepository.GetPagedWithCategoryAsync(pageNumber, pageSize);
-        return new PagedResult<ProductResponse>
+        var query = _productRepository.GetProductsWithCategoryQuery();
+
+        
+        if (includeDeleted || onlyDeleted)
         {
-            PageNumber = pageNumber,
-            PageSize = pageSize,
-            TotalCount = totalCount,
-            Items = items.Select(p => new ProductResponse
-            {
-                Id = p.Id,
-                Name = p.Name,
-                Price = p.Price,
-                Stock = p.Stock,
-                CategoryId = p.CategoryId,
-                CategoryName = p.Category?.Name ?? ""
-            }).ToList()
+            query = query.IgnoreQueryFilters();
+        }
 
+       
+        if (onlyDeleted)
+        {
+            query = query.Where(p => p.IsDeleted == true);
+        }
+
+        // search and filter
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            query = query.Where(p => p.Name.ToLower().Contains(s));
+        }
+
+        if (categoryId.HasValue)
+            query = query.Where(p => p.CategoryId == categoryId.Value);
+
+        if (minPrice.HasValue)
+            query = query.Where(p => p.Price >= minPrice.Value);
+
+        if (maxPrice.HasValue)
+            query = query.Where(p => p.Price <= maxPrice.Value);
+
+        // sort
+        var desc = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
+        query = (sortBy?.ToLower()) switch
+        {
+            "price" => desc ? query.OrderByDescending(p => p.Price) : query.OrderBy(p => p.Price),
+            "name" => desc ? query.OrderByDescending(p => p.Name) : query.OrderBy(p => p.Name),
+            "stock" => desc ? query.OrderByDescending(p => p.Stock) : query.OrderBy(p => p.Stock),
+            _ => query.OrderBy(p => p.Id)
         };
-    }
 
-    public async Task<List<ProductResponse>> GetAllAsync()
-    {
-        var products = await _productRepository.GetAllWithCategoryAsync();
-
-        return products.Select(p => new ProductResponse
+        
+        var selectQuery = query.Select(p => new ProductResponse
         {
             Id = p.Id,
             Name = p.Name,
             Price = p.Price,
             Stock = p.Stock,
             CategoryId = p.CategoryId,
-            CategoryName = p.Category?.Name ?? ""
-        }).ToList();
+            CategoryName = p.Category != null ? p.Category.Name : ""
+        });
+
+        // paging
+        var pagedData = await selectQuery.ToPagedResultAsync(pagingRequest);
+
+        return Result<PagedResult<ProductResponse>>.Success(pagedData);
     }
-
-
-
-
 }
