@@ -68,6 +68,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseMiddleware<InventorySales.Api.Middlewares.ExceptionMiddleware>();
 app.UseHttpsRedirection();
 
 app.UseAuthorization();

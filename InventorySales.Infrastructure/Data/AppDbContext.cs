@@ -2,6 +2,7 @@
 using InventorySales.Domain.Entities.Common;
 using InventorySales.Domain.Entities.Identity;
 using InventorySales.Domain.Entities.Orders;
+using InventorySales.Domain.Entities.System;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -18,6 +19,7 @@ namespace InventorySales.Infrastructure.Data
         public DbSet<Product> Products => Set<Product>();
         public DbSet<Order> Orders => Set<Order>();
         public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+        public DbSet<LogEntry> Logs => Set<LogEntry>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {

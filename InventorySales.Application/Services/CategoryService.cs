@@ -1,7 +1,12 @@
 ﻿using InventorySales.Application.DTOs.Category;
 using InventorySales.Application.DTOs.Common;
+using InventorySales.Application.Extensions;
 using InventorySales.Domain.Entities;
 using InventorySales.Infrastructure.Repositories;
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace InventorySales.Application.Services
 {
@@ -16,69 +21,64 @@ namespace InventorySales.Application.Services
             _productRepository = productRepository;
         }
 
-
-        public async Task CreateAsync(CategoryCreateRequest request)
+        
+        public async Task<Result<int>> CreateAsync(CategoryCreateRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Name))
-                throw new ArgumentException("Category names cannot be empty.");
+                return Result<int>.Failure("Category names cannot be empty.");
 
-            var category = new Category
-            {
-                Name = request.Name.Trim()
-            };
-
+            var category = new Category { Name = request.Name.Trim() };
             await _categoryRepository.AddAsync(category);
+
+            return Result<int>.Success(category.Id, "Category created successfully.");
         }
 
-        public async Task<List<CategoryResponse>> GetAllAsync()
+        public async Task<Result<List<CategoryResponse>>> GetAllAsync()
         {
-            var categories = await _categoryRepository.GetAllAsync();
+            var list = await _categoryRepository.GetQueryable()
+                .Select(c => new CategoryResponse { Id = c.Id, Name = c.Name })
+                .ToListAsync();
 
-            return categories.Select(c => new CategoryResponse
-            {
-                Id = c.Id,
-                Name = c.Name
-            }).ToList();
+            return Result<List<CategoryResponse>>.Success(list);
         }
 
-        public async Task<PagedResult<CategoryResponse>> GetPagedAsync(int pageNumber, int pageSize)
+        public async Task<Result<PagedResult<CategoryResponse>>> GetPagedAsync(PagingRequest request)
         {
-            var (items, totalCount) = await _categoryRepository.GetPagedAsync(pageNumber, pageSize);
+            var query = _categoryRepository.GetQueryable()
+                .Select(c => new CategoryResponse { Id = c.Id, Name = c.Name });
 
-            return new PagedResult<CategoryResponse>
-            {
-                PageNumber = pageNumber,
-                PageSize = pageSize,
-                TotalCount = totalCount,
-                Items = items.Select(c => new CategoryResponse
-                {
-                    Id = c.Id,
-                    Name = c.Name
-                }).ToList()
-            };
+            var paged = await query.ToPagedResultAsync(request);
+            return Result<PagedResult<CategoryResponse>>.Success(paged);
         }
-        public async Task UpdateAsync(int id,CategoryUpdateRequest request)
+
+        
+        public async Task<Result<int>> UpdateAsync(int id, CategoryUpdateRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Name))
-                throw new ArgumentException("Category names cannot be empty.");
+                return Result<int>.Failure("Category names cannot be empty.");
+
             var category = await _categoryRepository.GetByIdAsync(id);
             if (category is null)
-                throw new ArgumentException("Category not found.");
+                return Result<int>.Failure("Category not found.");
+
             category.Name = request.Name.Trim();
             await _categoryRepository.UpdateAsync(category);
+
+            return Result<int>.Success(category.Id, "Category updated successfully.");
         }
-        public async Task DeleteAsync(int id)
+
+        public async Task<Result> DeleteAsync(int id)
         {
             var category = await _categoryRepository.GetByIdAsync(id);
             if (category is null)
-                throw new ArgumentException("Category not found.");
+                return Result.Failure("Category not found.");
 
             var hasProducts = await _productRepository.AnyByCategoryIdAsync(id);
             if (hasProducts)
-                throw new ArgumentException("This category contains products. First, delete the products or move them to another category.");
+                return Result.Failure("This category contains products. First, delete the products or move them.");
 
             await _categoryRepository.DeleteAsync(category);
+            return Result.Success("Category deleted successfully.");
         }
-
     }
 }

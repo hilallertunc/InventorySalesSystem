@@ -1,6 +1,11 @@
-﻿using InventorySales.Application.Services;
+﻿using InventorySales.Application.DTOs.Common;
+using InventorySales.Application.DTOs.Reports;
+using InventorySales.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace InventorySales.Api.Controllers
 {
@@ -18,45 +23,40 @@ namespace InventorySales.Api.Controllers
 
         // daily sales
         [HttpGet("daily-sales")]
-        public async Task<IActionResult> DailySales([FromQuery] DateOnly date)
+        public async Task<Result<DailySalesReportResponse>> DailySales([FromQuery] DateOnly date)
         {
-            var result = await _reportService.GetDailySalesAsync(date);
-            return Ok(result);
+            return await _reportService.GetDailySalesAsync(date);
         }
 
         // top product
         [HttpGet("top-products")]
-        public async Task<IActionResult> TopProducts(
+        public async Task<Result<List<TopSellingProductResponse>>> TopProducts(
             [FromQuery] DateOnly? from = null,
             [FromQuery] DateOnly? to = null,
             [FromQuery] int take = 10)
         {
-            var result = await _reportService.GetTopSellingProductsAsync(from, to, take);
-            return Ok(result);
+            return await _reportService.GetTopSellingProductsAsync(from, to, take);
         }
 
         // customer sum
         [HttpGet("customer-summary")]
-        public async Task<IActionResult> CustomerSummary([FromQuery] string? userId = null)
+        public async Task<Result<List<CustomerOrderSummaryResponse>>> CustomerSummary([FromQuery] string? userId = null)
         {
-            var result = await _reportService.GetCustomerSummaryAsync(userId);
-            return Ok(result);
+            return await _reportService.GetCustomerSummaryAsync(userId);
         }
 
         // low stock 
         [HttpGet("low-stock")]
-        public async Task<IActionResult> LowStock([FromQuery] int threshold = 5)
+        public async Task<Result<List<LowStockProductResponse>>> LowStock([FromQuery] int threshold = 5)
         {
-            var result = await _reportService.GetLowStockAsync(threshold);
-            return Ok(result);
+            return await _reportService.GetLowStockAsync(threshold);
         }
 
         // sales range
         [HttpGet("sales-range")]
-        public async Task<IActionResult> SalesRange([FromQuery] DateOnly from, [FromQuery] DateOnly to)
+        public async Task<Result<SalesRangeReportResponse>> SalesRange([FromQuery] DateOnly from, [FromQuery] DateOnly to)
         {
-            var result = await _reportService.GetSalesRangeAsync(from, to);
-            return Ok(result);
+            return await _reportService.GetSalesRangeAsync(from, to);
         }
     }
 }

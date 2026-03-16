@@ -1,7 +1,12 @@
-﻿using InventorySales.Application.DTOs.Reports;
+﻿using InventorySales.Application.DTOs.Common;
+using InventorySales.Application.DTOs.Reports;
 using InventorySales.Domain.Entities.Orders;
 using InventorySales.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace InventorySales.Application.Services
 {
@@ -14,7 +19,7 @@ namespace InventorySales.Application.Services
         }
 
         // daily sales
-        public async Task<DailySalesReportResponse> GetDailySalesAsync(DateOnly date)
+        public async Task<Result<DailySalesReportResponse>> GetDailySalesAsync(DateOnly date)
         {
             var start = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             var end = start.AddDays(1);
@@ -23,20 +28,24 @@ namespace InventorySales.Application.Services
                 .AsNoTracking()
                 .Where(o => o.CreatedAtUtc >= start && o.CreatedAtUtc < end)
                 .Where(o => o.Status != OrderStatus.Cancelled);
+
             var orderCount = await ordersQuery.CountAsync();
             var totalSales = await ordersQuery
                .SelectMany(o => o.Items)
                .SumAsync(i => i.UnitPrice * i.Quantity);
 
-            return new DailySalesReportResponse
+            var data = new DailySalesReportResponse
             {
                 Date = date,
                 OrderCount = orderCount,
                 TotalSales = totalSales
             };
+
+            return Result<DailySalesReportResponse>.Success(data);
         }
+
         // best selling products
-        public async Task<List<TopSellingProductResponse>> GetTopSellingProductsAsync(
+        public async Task<Result<List<TopSellingProductResponse>>> GetTopSellingProductsAsync(
             DateOnly? from,
             DateOnly? to,
             int take = 10)
@@ -76,11 +85,11 @@ namespace InventorySales.Application.Services
                 .Take(take)
                 .ToListAsync();
 
-            return result;
+            return Result<List<TopSellingProductResponse>>.Success(result);
         }
 
         // customer based order summary
-        public async Task<List<CustomerOrderSummaryResponse>> GetCustomerSummaryAsync(string? userId)
+        public async Task<Result<List<CustomerOrderSummaryResponse>>> GetCustomerSummaryAsync(string? userId)
         {
             var orders = _context.Orders
                 .AsNoTracking()
@@ -112,7 +121,8 @@ namespace InventorySales.Application.Services
                 .Where(u => userIds.Contains(u.Id))
                 .Select(u => new { u.Id, u.Email })
                 .ToListAsync();
-            return summary
+
+            var data = summary
                 .Select(s =>
                 {
                     var u = users.FirstOrDefault(x => x.Id == s.UserId);
@@ -126,10 +136,12 @@ namespace InventorySales.Application.Services
                 })
                 .OrderByDescending(x => x.TotalSpend)
                 .ToList();
+
+            return Result<List<CustomerOrderSummaryResponse>>.Success(data);
         }
 
         // low stock
-        public async Task<List<LowStockProductResponse>> GetLowStockAsync(int threshold)
+        public async Task<Result<List<LowStockProductResponse>>> GetLowStockAsync(int threshold)
         {
             if (threshold < 0) threshold = 0;
 
@@ -148,11 +160,11 @@ namespace InventorySales.Application.Services
                 })
                 .ToListAsync();
 
-            return result;
+            return Result<List<LowStockProductResponse>>.Success(result);
         }
 
         // sales report for date range
-        public async Task<SalesRangeReportResponse> GetSalesRangeAsync(DateOnly from, DateOnly to)
+        public async Task<Result<SalesRangeReportResponse>> GetSalesRangeAsync(DateOnly from, DateOnly to)
         {
             var start = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             var endExclusive = to.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).AddDays(1);
@@ -170,7 +182,7 @@ namespace InventorySales.Application.Services
 
             var average = orderCount == 0 ? 0 : totalSales / orderCount;
 
-            return new SalesRangeReportResponse
+            var data = new SalesRangeReportResponse
             {
                 From = from,
                 To = to,
@@ -178,6 +190,8 @@ namespace InventorySales.Application.Services
                 TotalSales = totalSales,
                 AverageOrderValue = average
             };
+
+            return Result<SalesRangeReportResponse>.Success(data);
         }
     }
 }

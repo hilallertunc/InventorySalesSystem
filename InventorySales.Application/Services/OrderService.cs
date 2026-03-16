@@ -20,10 +20,10 @@ namespace InventorySales.Application.Services
             _productRepository = productRepository;
         }
 
-        public async Task<Result<OrderResponse>> CreateAsync(string userId, OrderCreateRequest request)
+        public async Task<Result<int>> CreateAsync(string userId, OrderCreateRequest request)
         {
             if (request.Items == null || request.Items.Count == 0)
-                return Result<OrderResponse>.Failure("Order items cannot be left blank.");
+                return Result<int>.Failure("Order items cannot be left blank.");
 
             await using var tx = await _orderRepository.BeginTransactionAsync();
 
@@ -35,19 +35,17 @@ namespace InventorySales.Application.Services
                     Status = OrderStatus.Created
                 };
 
-                var responseItems = new List<OrderItemResponse>();
-
                 foreach (var item in request.Items)
                 {
                     if (item.Quantity <= 0)
-                        return Result<OrderResponse>.Failure("The quantity cannot be 0 or negative.");
+                        return Result<int>.Failure("The quantity cannot be 0 or negative.");
 
                     var product = await _productRepository.GetByIdAsync(item.ProductId);
                     if (product is null)
-                        return Result<OrderResponse>.Failure($"Product not found. ProductId={item.ProductId}");
+                        return Result<int>.Failure($"Product not found. ProductId={item.ProductId}");
 
                     if (product.Stock < item.Quantity)
-                        return Result<OrderResponse>.Failure($"Stock is insufficient. Product={product.Name}, Stock={product.Stock}, Desired={item.Quantity}");
+                        return Result<int>.Failure($"Stock is insufficient. Product={product.Name}, Stock={product.Stock}, Desired={item.Quantity}");
 
                     product.Stock -= item.Quantity;
                     await _productRepository.UpdateAsync(product);
@@ -58,36 +56,17 @@ namespace InventorySales.Application.Services
                         Quantity = item.Quantity,
                         UnitPrice = product.Price
                     });
-
-                    responseItems.Add(new OrderItemResponse
-                    {
-                        ProductId = product.Id,
-                        ProductName = product.Name,
-                        Quantity = item.Quantity,
-                        UnitPrice = product.Price
-                    });
                 }
 
                 await _orderRepository.AddAsync(order);
                 await tx.CommitAsync();
 
-                var total = responseItems.Sum(i => i.UnitPrice * i.Quantity);
-
-                var orderResponse = new OrderResponse
-                {
-                    Id = order.Id,
-                    Status = order.Status.ToString(),
-                    CreatedAtUtc = order.CreatedAtUtc,
-                    Total = total,
-                    Items = responseItems
-                };
-
-                return Result<OrderResponse>.Success(orderResponse, "Order created successfully");
+                return Result<int>.Success(order.Id, "Order created successfully.");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 await tx.RollbackAsync();
-                return Result<OrderResponse>.Failure($"An error occurred: {ex.Message}");
+                throw; // for middleware
             }
         }
 
@@ -99,31 +78,31 @@ namespace InventorySales.Application.Services
             {
                 var order = await _orderRepository.GetByIdWithItemsAsync(orderId);
                 if (order is null)
-                    return Result.Failure("Sipariş bulunamadı.");
+                    return Result.Failure("Order not found.");
 
                 if (order.Status == OrderStatus.Cancelled)
-                    return Result.Failure("Sipariş zaten iptal.");
+                    return Result.Failure("The order has already been cancelled.");
 
                 foreach (var item in order.Items)
                 {
                     var product = item.Product ?? await _productRepository.GetByIdAsync(item.ProductId);
-                    if (product is null)
-                        return Result.Failure($"Product bulunamadı. ProductId={item.ProductId}");
-
-                    product.Stock += item.Quantity;
-                    await _productRepository.UpdateAsync(product);
+                    if (product != null)
+                    {
+                        product.Stock += item.Quantity;
+                        await _productRepository.UpdateAsync(product);
+                    }
                 }
 
                 order.Status = OrderStatus.Cancelled;
                 await _orderRepository.SaveAsync();
-
                 await tx.CommitAsync();
-                return Result.Success("Order cancelled");
+
+                return Result.Success("Order cancelled successfully.");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 await tx.RollbackAsync();
-                return Result.Failure($"An error occurred: {ex.Message}");
+                throw; 
             }
         }
     }

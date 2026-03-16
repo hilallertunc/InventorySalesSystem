@@ -1,6 +1,8 @@
 ﻿using InventorySales.Domain.Entities.Common;
 using InventorySales.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace InventorySales.Infrastructure.Repositories.Base
 {
@@ -21,11 +23,6 @@ namespace InventorySales.Infrastructure.Repositories.Base
             await _context.SaveChangesAsync();
         }
 
-        public async Task<List<TEntity>> GetAllAsync()
-        {
-            return await _dbSet.ToListAsync();
-        }
-
         public async Task<TEntity?> GetByIdAsync(int id)
         {
             return await _dbSet.FirstOrDefaultAsync(x => x.Id == id);
@@ -37,25 +34,20 @@ namespace InventorySales.Infrastructure.Repositories.Base
             await _context.SaveChangesAsync();
         }
 
+        // soft delete
         public async Task DeleteAsync(TEntity entity)
         {
             _dbSet.Remove(entity);
             await _context.SaveChangesAsync();
         }
-        public async Task<(List<TEntity> Items, int TotalCount)> GetPagedAsync(int pageNumber, int pageSize)
+
+        // hard delete
+        public async Task HardDeleteAsync(int id)
         {
-            if (pageNumber < 1) pageNumber = 1;
-            if (pageSize < 1) pageSize = 10;
-
-            var totalCount = await _dbSet.CountAsync();
-
-            var items = await _dbSet
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
-
-            return (items, totalCount);
+            await _dbSet.Where(e => e.Id == id).ExecuteDeleteAsync();
         }
+
+        
         public IQueryable<TEntity> GetQueryable()
         {
             return _dbSet.AsQueryable();

@@ -1,4 +1,5 @@
-﻿using InventorySales.Application.DTOs.Order;
+﻿using InventorySales.Application.DTOs.Common;
+using InventorySales.Application.DTOs.Order;
 using InventorySales.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,22 +21,20 @@ namespace InventorySales.Api.Controllers
 
         [Authorize(Roles = "User,Admin")]
         [HttpPost]
-        public async Task<IActionResult> Create(OrderCreateRequest request)
+        public async Task<Result<int>> Create(OrderCreateRequest request)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrWhiteSpace(userId))
-                return Unauthorized();
+                return Result<int>.Failure("Unauthorized user.");
 
-            var result = await _orderService.CreateAsync(userId, request);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return await _orderService.CreateAsync(userId, request);
         }
 
         [Authorize(Roles = "Admin")]
         [HttpPost("{id}/cancel")]
-        public async Task<IActionResult> Cancel(int id)
+        public async Task<Result> Cancel(int id)
         {
-            var result = await _orderService.CancelAsync(id);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return await _orderService.CancelAsync(id);
         }
     }
 }

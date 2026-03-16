@@ -22,20 +22,21 @@ public class ProductService
         _categoryRepository = categoryRepository;
     }
 
-    public async Task<Result> CreateAsync(ProductCreateRequest request)
+    
+    public async Task<Result<int>> CreateAsync(ProductCreateRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
-            return Result.Failure("Product names cannot be left blank.");
+            return Result<int>.Failure("Product names cannot be left blank.");
 
         if (request.Price <= 0)
-            return Result.Failure("The price cannot be 0 or negative.");
+            return Result<int>.Failure("The price cannot be 0 or negative.");
 
         if (request.Stock < 0)
-            return Result.Failure("The stock cannot be negative.");
+            return Result<int>.Failure("The stock cannot be negative.");
 
         var category = await _categoryRepository.GetByIdAsync(request.CategoryId);
         if (category == null)
-            return Result.Failure("Invalid CategoryId.");
+            return Result<int>.Failure("Invalid CategoryId.");
 
         var product = new Product
         {
@@ -46,27 +47,30 @@ public class ProductService
         };
 
         await _productRepository.AddAsync(product);
-        return Result.Success("Product created successfully.");
+
+       
+        return Result<int>.Success(product.Id, "Product created successfully.");
     }
 
-    public async Task<Result> UpdateAsync(int id, ProductUpdateRequest request)
+   
+    public async Task<Result<int>> UpdateAsync(int id, ProductUpdateRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
-            return Result.Failure("Product names cannot be left blank.");
+            return Result<int>.Failure("Product names cannot be left blank.");
 
         if (request.Price <= 0)
-            return Result.Failure("The price cannot be 0 or negative.");
+            return Result<int>.Failure("The price cannot be 0 or negative.");
 
         if (request.Stock < 0)
-            return Result.Failure("The stock cannot be negative.");
+            return Result<int>.Failure("The stock cannot be negative.");
 
         var product = await _productRepository.GetByIdAsync(id);
         if (product is null)
-            return Result.Failure("Product not found.");
+            return Result<int>.Failure("Product not found.");
 
         var category = await _categoryRepository.GetByIdAsync(request.CategoryId);
         if (category is null)
-            return Result.Failure("Invalid CategoryId.");
+            return Result<int>.Failure("Invalid CategoryId.");
 
         product.Name = request.Name.Trim();
         product.Price = request.Price;
@@ -74,7 +78,8 @@ public class ProductService
         product.CategoryId = request.CategoryId;
 
         await _productRepository.UpdateAsync(product);
-        return Result.Success("Product updated successfully.");
+
+        return Result<int>.Success(product.Id, "Product updated successfully.");
     }
 
     public async Task<Result> DeleteAsync(int id)
@@ -89,8 +94,7 @@ public class ProductService
 
     public async Task<Result> RestoreAsync(int id)
     {
-        
-        var query = _productRepository.GetProductsWithCategoryQuery().IgnoreQueryFilters();
+        var query = _productRepository.GetQueryable().IgnoreQueryFilters();
         var product = await query.FirstOrDefaultAsync(p => p.Id == id);
 
         if (product is null)
@@ -114,19 +118,16 @@ public class ProductService
     {
         var query = _productRepository.GetProductsWithCategoryQuery();
 
-        
         if (includeDeleted || onlyDeleted)
         {
             query = query.IgnoreQueryFilters();
         }
 
-       
         if (onlyDeleted)
         {
             query = query.Where(p => p.IsDeleted == true);
         }
 
-        // search and filter
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim().ToLower();
@@ -142,7 +143,6 @@ public class ProductService
         if (maxPrice.HasValue)
             query = query.Where(p => p.Price <= maxPrice.Value);
 
-        // sort
         var desc = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
         query = (sortBy?.ToLower()) switch
         {
@@ -152,7 +152,6 @@ public class ProductService
             _ => query.OrderBy(p => p.Id)
         };
 
-        
         var selectQuery = query.Select(p => new ProductResponse
         {
             Id = p.Id,
@@ -163,7 +162,6 @@ public class ProductService
             CategoryName = p.Category != null ? p.Category.Name : ""
         });
 
-        // paging
         var pagedData = await selectQuery.ToPagedResultAsync(pagingRequest);
 
         return Result<PagedResult<ProductResponse>>.Success(pagedData);

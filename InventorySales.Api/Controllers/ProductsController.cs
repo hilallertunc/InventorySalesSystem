@@ -3,7 +3,6 @@ using InventorySales.Application.DTOs.Product;
 using InventorySales.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace InventorySales.Api.Controllers
@@ -21,38 +20,35 @@ namespace InventorySales.Api.Controllers
 
         [Authorize(Roles = "Admin")]
         [HttpPost]
-        public async Task<IActionResult> Create(ProductCreateRequest request)
+        public async Task<Result<int>> Create(ProductCreateRequest request)
         {
-            var result = await _productService.CreateAsync(request);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            
+            return await _productService.CreateAsync(request);
         }
 
         [Authorize(Roles = "Admin")]
         [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, ProductUpdateRequest request)
+        public async Task<Result<int>> Update(int id, ProductUpdateRequest request)
         {
-            var result = await _productService.UpdateAsync(id, request);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return await _productService.UpdateAsync(id, request);
         }
 
         [Authorize(Roles = "Admin")]
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(int id)
+        public async Task<Result> Delete(int id)
         {
-            var result = await _productService.DeleteAsync(id);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return await _productService.DeleteAsync(id);
         }
 
         [Authorize(Roles = "Admin")]
         [HttpPost("{id}/restore")]
-        public async Task<IActionResult> Restore(int id)
+        public async Task<Result> Restore(int id)
         {
-            var result = await _productService.RestoreAsync(id);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return await _productService.RestoreAsync(id);
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll(
+        public async Task<Result<PagedResult<ProductResponse>>> GetAll(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 10,
             [FromQuery] string? search = null,
@@ -64,18 +60,16 @@ namespace InventorySales.Api.Controllers
             [FromQuery] bool includeDeleted = false,
             [FromQuery] bool onlyDeleted = false)
         {
-            // only admin
             if ((includeDeleted || onlyDeleted) && !User.IsInRole("Admin"))
             {
-                return Forbid(); 
+                
+                return Result<PagedResult<ProductResponse>>.Failure("No access permission.");
             }
 
             var paging = new PagingRequest { PageNumber = pageNumber, PageSize = pageSize };
 
-            var result = await _productService.GetPagedAsync(
+            return await _productService.GetPagedAsync(
                 paging, search, categoryId, minPrice, maxPrice, sortBy, sortDir, includeDeleted, onlyDeleted);
-
-            return result.IsSuccess ? Ok(result.Data) : BadRequest(result);
         }
     }
 }
