@@ -1,5 +1,12 @@
-﻿using InventorySales.Application.Services;
+﻿using InventorySales.Application.Interfaces;
+using InventorySales.Application.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
+using System;
+using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace InventorySales.Api.Controllers
 {
@@ -8,10 +15,12 @@ namespace InventorySales.Api.Controllers
     public class AuthController : ControllerBase
     {
         private readonly AuthService _authService;
+        private readonly ICacheService _cacheService;
 
-        public AuthController(AuthService authService)
+        public AuthController(AuthService authService, ICacheService cacheService)
         {
             _authService = authService;
+            _cacheService = cacheService;
         }
 
         public record RegisterRequest(string Email, string Password);
@@ -29,6 +38,38 @@ namespace InventorySales.Api.Controllers
         {
             var result = await _authService.LoginAsync(request.Email, request.Password);
             return result.IsSuccess ? Ok(result) : Unauthorized(result);
+        }
+
+        [Authorize]
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout()
+        {
+            if (Request.Headers.TryGetValue("Authorization", out StringValues authHeader))
+            {
+                var token = authHeader.FirstOrDefault()?.Split(" ").Last();
+
+                if (!string.IsNullOrEmpty(token))
+                {
+                    var handler = new JwtSecurityTokenHandler();
+                    var jwtToken = handler.ReadJwtToken(token);
+
+                    var expClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Exp)?.Value;
+
+                    if (expClaim != null)
+                    {
+                        var expDateTime = DateTimeOffset.FromUnixTimeSeconds(long.Parse(expClaim)).UtcDateTime;
+                        var timeRemaining = expDateTime - DateTime.UtcNow;
+
+                        if (timeRemaining > TimeSpan.Zero)
+                        {
+                            string cacheKey = $"Blacklist_{token}";
+                            await _cacheService.SetAsync(cacheKey, "revoked", timeRemaining);
+                        }
+                    }
+                }
+            }
+
+            return Ok(new { isSuccess = true, message = "Logged out successfully." });
         }
     }
 }

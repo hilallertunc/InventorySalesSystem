@@ -44,7 +44,7 @@ namespace InventorySales.Infrastructure.Repositories.Base
         // hard delete
         public async Task HardDeleteAsync(int id)
         {
-            await _dbSet.Where(e => e.Id == id).ExecuteDeleteAsync();
+            await _dbSet.IgnoreQueryFilters().Where(e => e.Id == id).ExecuteDeleteAsync();
         }
 
         

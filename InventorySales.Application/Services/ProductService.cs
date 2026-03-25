@@ -92,6 +92,17 @@ public class ProductService
         return Result.Success("Product deleted successfully.");
     }
 
+    public async Task<Result> HardDeleteAsync(int id)
+    {
+
+        var query = _productRepository.GetQueryable().IgnoreQueryFilters();
+        var product = await query.FirstOrDefaultAsync(p => p.Id == id);
+
+        if (product is null)
+            return Result.Failure("Product not found.");
+        await _productRepository.HardDeleteAsync(id);
+        return Result.Success("Product permanently deleted from database.");
+    }
     public async Task<Result> RestoreAsync(int id)
     {
         var query = _productRepository.GetQueryable().IgnoreQueryFilters();

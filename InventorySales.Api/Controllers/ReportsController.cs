@@ -21,40 +21,32 @@ namespace InventorySales.Api.Controllers
             _reportService = reportService;
         }
 
-        // daily sales
         [HttpGet("daily-sales")]
-        public async Task<Result<DailySalesReportResponse>> DailySales([FromQuery] DateOnly date)
+        public async Task<Result<DailySalesReportResponse>> GetDailySales([FromQuery] DateOnly date)
         {
             return await _reportService.GetDailySalesAsync(date);
         }
 
-        // top product
-        [HttpGet("top-products")]
-        public async Task<Result<List<TopSellingProductResponse>>> TopProducts(
-            [FromQuery] DateOnly? from = null,
-            [FromQuery] DateOnly? to = null,
-            [FromQuery] int take = 10)
+        [HttpGet("top-selling")]
+        public async Task<Result<List<TopSellingProductResponse>>> GetTopSelling([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] int take = 10)
         {
             return await _reportService.GetTopSellingProductsAsync(from, to, take);
         }
 
-        // customer sum
         [HttpGet("customer-summary")]
-        public async Task<Result<List<CustomerOrderSummaryResponse>>> CustomerSummary([FromQuery] string? userId = null)
+        public async Task<Result<List<CustomerOrderSummaryResponse>>> GetCustomerSummary([FromQuery] string? userId)
         {
             return await _reportService.GetCustomerSummaryAsync(userId);
         }
 
-        // low stock 
         [HttpGet("low-stock")]
-        public async Task<Result<List<LowStockProductResponse>>> LowStock([FromQuery] int threshold = 5)
+        public async Task<Result<List<LowStockProductResponse>>> GetLowStock([FromQuery] int threshold = 10)
         {
             return await _reportService.GetLowStockAsync(threshold);
         }
 
-        // sales range
         [HttpGet("sales-range")]
-        public async Task<Result<SalesRangeReportResponse>> SalesRange([FromQuery] DateOnly from, [FromQuery] DateOnly to)
+        public async Task<Result<SalesRangeReportResponse>> GetSalesRange([FromQuery] DateOnly from, [FromQuery] DateOnly to)
         {
             return await _reportService.GetSalesRangeAsync(from, to);
         }

@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: inventory_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mysecretpassword123
+      POSTGRES_DB: InventoryDb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    container_name: inventory_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inventory_api
+    ports:
+      - "7064:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__Default=Host=db;Port=5432;Database=InventoryDb;Username=postgres;Password=mysecretpassword123
+      - RedisCacheSettings__ConnectionString=redis:6379
+      - Jwt__Key=BuBenimCokGizliVeUzunAnahtarKelimesidir12345!
+      - Jwt__Issuer=InventorySalesApi
+      - Jwt__Audience=InventorySalesUsers
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  postgres_data:
+  redis_data:

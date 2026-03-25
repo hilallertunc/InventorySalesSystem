@@ -41,6 +41,13 @@ namespace InventorySales.Api.Controllers
         }
 
         [Authorize(Roles = "Admin")]
+        [HttpDelete("{id}/hard")] 
+        public async Task<Result> HardDelete(int id)
+        {
+            return await _productService.HardDeleteAsync(id);
+        } 
+
+        [Authorize(Roles = "Admin")]
         [HttpPost("{id}/restore")]
         public async Task<Result> Restore(int id)
         {

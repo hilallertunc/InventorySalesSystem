@@ -1,5 +1,6 @@
 ﻿using InventorySales.Application.DTOs.Common;
 using InventorySales.Application.DTOs.Reports;
+using InventorySales.Application.Interfaces;
 using InventorySales.Domain.Entities.Orders;
 using InventorySales.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -13,14 +14,26 @@ namespace InventorySales.Application.Services
     public class ReportService
     {
         private readonly AppDbContext _context;
-        public ReportService(AppDbContext context)
+        private readonly ICacheService _cacheService;
+
+        public ReportService(AppDbContext context, ICacheService cacheService)
         {
             _context = context;
+            _cacheService = cacheService;
         }
 
-        // daily sales
         public async Task<Result<DailySalesReportResponse>> GetDailySalesAsync(DateOnly date)
         {
+            // Cache anahtarını parametreye göre dinamik yapıyoruz
+            string cacheKey = $"Report_DailySales_{date:yyyyMMdd}";
+
+            // Önce Redis'e sor
+            var cachedData = await _cacheService.GetAsync<DailySalesReportResponse>(cacheKey);
+            if (cachedData != null)
+            {
+                return Result<DailySalesReportResponse>.Success(cachedData, "Data was retrieved from the cache (Redis).");
+            }
+
             var start = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             var end = start.AddDays(1);
 
@@ -41,16 +54,28 @@ namespace InventorySales.Application.Services
                 TotalSales = totalSales
             };
 
-            return Result<DailySalesReportResponse>.Success(data);
+            // Sonucu 15 dakikalığına Redis'e kaydet
+            await _cacheService.SetAsync(cacheKey, data, TimeSpan.FromMinutes(15));
+
+            return Result<DailySalesReportResponse>.Success(data, "The data was retrieved from the database and cached.");
         }
 
-        // best selling products
         public async Task<Result<List<TopSellingProductResponse>>> GetTopSellingProductsAsync(
             DateOnly? from,
             DateOnly? to,
             int take = 10)
         {
             if (take < 1) take = 10;
+
+            string fromStr = from?.ToString("yyyyMMdd") ?? "Any";
+            string toStr = to?.ToString("yyyyMMdd") ?? "Any";
+            string cacheKey = $"Report_TopSelling_{fromStr}_{toStr}_{take}";
+
+            var cachedData = await _cacheService.GetAsync<List<TopSellingProductResponse>>(cacheKey);
+            if (cachedData != null)
+            {
+                return Result<List<TopSellingProductResponse>>.Success(cachedData, "Data was retrieved from the cache (Redis).");
+            }
 
             var query = _context.OrderItems
                 .AsNoTracking()
@@ -85,12 +110,21 @@ namespace InventorySales.Application.Services
                 .Take(take)
                 .ToListAsync();
 
-            return Result<List<TopSellingProductResponse>>.Success(result);
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(15));
+
+            return Result<List<TopSellingProductResponse>>.Success(result, "The data was retrieved from the database and cached.");
         }
 
-        // customer based order summary
         public async Task<Result<List<CustomerOrderSummaryResponse>>> GetCustomerSummaryAsync(string? userId)
         {
+            string cacheKey = $"Report_CustomerSummary_{userId ?? "All"}";
+
+            var cachedData = await _cacheService.GetAsync<List<CustomerOrderSummaryResponse>>(cacheKey);
+            if (cachedData != null)
+            {
+                return Result<List<CustomerOrderSummaryResponse>>.Success(cachedData, "Data was retrieved from the cache (Redis).");
+            }
+
             var orders = _context.Orders
                 .AsNoTracking()
                 .Where(o => o.Status != OrderStatus.Cancelled)
@@ -137,12 +171,21 @@ namespace InventorySales.Application.Services
                 .OrderByDescending(x => x.TotalSpend)
                 .ToList();
 
-            return Result<List<CustomerOrderSummaryResponse>>.Success(data);
+            await _cacheService.SetAsync(cacheKey, data, TimeSpan.FromMinutes(15));
+
+            return Result<List<CustomerOrderSummaryResponse>>.Success(data, "The data was retrieved from storage and cached.");
         }
 
-        // low stock
         public async Task<Result<List<LowStockProductResponse>>> GetLowStockAsync(int threshold)
         {
+            string cacheKey = $"Report_LowStock_{threshold}";
+
+            var cachedData = await _cacheService.GetAsync<List<LowStockProductResponse>>(cacheKey);
+            if (cachedData != null)
+            {
+                return Result<List<LowStockProductResponse>>.Success(cachedData, "Data was retrieved from the cache (Redis).");
+            }
+
             if (threshold < 0) threshold = 0;
 
             var result = await _context.Products
@@ -160,12 +203,22 @@ namespace InventorySales.Application.Services
                 })
                 .ToListAsync();
 
-            return Result<List<LowStockProductResponse>>.Success(result);
+            
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromMinutes(5));
+
+            return Result<List<LowStockProductResponse>>.Success(result, "The data was retrieved from storage and cached.");
         }
 
-        // sales report for date range
         public async Task<Result<SalesRangeReportResponse>> GetSalesRangeAsync(DateOnly from, DateOnly to)
         {
+            string cacheKey = $"Report_SalesRange_{from:yyyyMMdd}_{to:yyyyMMdd}";
+
+            var cachedData = await _cacheService.GetAsync<SalesRangeReportResponse>(cacheKey);
+            if (cachedData != null)
+            {
+                return Result<SalesRangeReportResponse>.Success(cachedData, "Data was retrieved from the cache (Redis).");
+            }
+
             var start = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             var endExclusive = to.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc).AddDays(1);
 
@@ -191,7 +244,9 @@ namespace InventorySales.Application.Services
                 AverageOrderValue = average
             };
 
-            return Result<SalesRangeReportResponse>.Success(data);
+            await _cacheService.SetAsync(cacheKey, data, TimeSpan.FromMinutes(15));
+
+            return Result<SalesRangeReportResponse>.Success(data, "The data was retrieved from storage and cached.");
         }
     }
 }
