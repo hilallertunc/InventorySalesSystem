@@ -1,6 +1,9 @@
-﻿using InventorySales.Application.DTOs.Common;
+﻿using InventorySales.Application.DTOs.Auth;
+using InventorySales.Application.DTOs.Common;
+using InventorySales.Application.Interfaces;
 using InventorySales.Domain.Entities.Identity;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System;
@@ -13,17 +16,23 @@ using System.Threading.Tasks;
 
 namespace InventorySales.Application.Services
 {
-    public class AuthService
+    public class AuthService : IAuthService
     {
         private readonly UserManager<AppUser> _userManager;
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IConfiguration _configuration;
+        private readonly IDistributedCache _cache;
 
-        public AuthService(UserManager<AppUser> userManager, RoleManager<IdentityRole> roleManager, IConfiguration configuration)
+        public AuthService(
+            UserManager<AppUser> userManager,
+            RoleManager<IdentityRole> roleManager,
+            IConfiguration configuration,
+            IDistributedCache cache)
         {
             _userManager = userManager;
             _roleManager = roleManager;
             _configuration = configuration;
+            _cache = cache;
         }
 
         public async Task<Result> RegisterAsync(string email, string password)
@@ -51,31 +60,54 @@ namespace InventorySales.Application.Services
             return Result.Success("User created successfully!");
         }
 
-        public async Task<Result<string>> LoginAsync(string email, string password)
+        public async Task<Result<string>> LoginAsync(LoginDto request)
         {
-            var user = await _userManager.FindByEmailAsync(email);
-            if (user != null && await _userManager.CheckPasswordAsync(user, password))
+            var user = await _userManager.FindByEmailAsync(request.Email);
+
+            if (user == null || !await _userManager.CheckPasswordAsync(user, request.Password))
             {
-                var userRoles = await _userManager.GetRolesAsync(user);
-
-                var authClaims = new List<Claim>
-                {
-                    new Claim(ClaimTypes.NameIdentifier, user.Id),
-                    new Claim(ClaimTypes.Email, user.Email!),
-                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                };
-
-                foreach (var userRole in userRoles)
-                {
-                    authClaims.Add(new Claim(ClaimTypes.Role, userRole));
-                }
-
-                var token = GetToken(authClaims);
-                var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-
-                return Result<string>.Success(tokenString, "Login successful");
+                return Result<string>.Failure("Invalid username or password");
             }
-            return Result<string>.Failure("Invalid username or password");
+
+            var cacheKey = $"active_token_{user.Id}";
+            var existingToken = await _cache.GetStringAsync(cacheKey);
+
+            if (!string.IsNullOrEmpty(existingToken))
+            {
+                if (!request.ForceRelogin)
+                {
+                    return Result<string>.Failure("There is already an active session for this user. Please use 'ForceRelogin' to log out from other devices.");
+                }
+                else
+                {
+                    await _cache.RemoveAsync(cacheKey);
+                }
+            }
+
+            var userRoles = await _userManager.GetRolesAsync(user);
+
+            var authClaims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, user.Id),
+                new Claim(ClaimTypes.Email, user.Email!),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            };
+
+            foreach (var userRole in userRoles)
+            {
+                authClaims.Add(new Claim(ClaimTypes.Role, userRole));
+            }
+
+            var token = GetToken(authClaims);
+            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
+            var cacheOptions = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(3)
+            };
+            await _cache.SetStringAsync(cacheKey, tokenString, cacheOptions);
+
+            return Result<string>.Success(tokenString, "Login successful");
         }
 
         private JwtSecurityToken GetToken(List<Claim> authClaims)

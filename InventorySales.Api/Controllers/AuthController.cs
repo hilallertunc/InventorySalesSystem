@@ -1,5 +1,6 @@
-﻿using InventorySales.Application.Interfaces;
-using InventorySales.Application.Services;
+﻿using InventorySales.Application.DTOs.Auth;
+using InventorySales.Application.Interfaces;
+using InventorySales.Infrastructure.Services; 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
@@ -14,17 +15,18 @@ namespace InventorySales.Api.Controllers
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
-        private readonly AuthService _authService;
+       
+        private readonly IAuthService _authService;
         private readonly ICacheService _cacheService;
 
-        public AuthController(AuthService authService, ICacheService cacheService)
+        public AuthController(IAuthService authService, ICacheService cacheService)
         {
             _authService = authService;
             _cacheService = cacheService;
         }
 
         public record RegisterRequest(string Email, string Password);
-        public record LoginRequest(string Email, string Password);
+       
 
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterRequest request)
@@ -34,12 +36,15 @@ namespace InventorySales.Api.Controllers
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginRequest request)
+        public async Task<IActionResult> Login([FromBody] LoginDto request)
         {
-            var result = await _authService.LoginAsync(request.Email, request.Password);
+            
+            var result = await _authService.LoginAsync(request);
+
             return result.IsSuccess ? Ok(result) : Unauthorized(result);
         }
 
+        
         [Authorize]
         [HttpPost("logout")]
         public async Task<IActionResult> Logout()
