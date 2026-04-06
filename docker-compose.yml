@@ -1,5 +1,4 @@
 version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
@@ -12,7 +11,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
   redis:
     image: redis:alpine
     container_name: inventory_redis
@@ -20,14 +18,13 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-
   api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: inventory_api
     ports:
-      - "7064:8080"
+      - "8080:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__Default=Host=db;Port=5432;Database=InventoryDb;Username=postgres;Password=mysecretpassword123
@@ -38,7 +35,6 @@ services:
     depends_on:
       - db
       - redis
-
 volumes:
   postgres_data:
   redis_data:

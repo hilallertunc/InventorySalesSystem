@@ -22,107 +22,68 @@ namespace InventorySales.Application.Services
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IConfiguration _configuration;
         private readonly IDistributedCache _cache;
+        private readonly IMailService _mailService;
 
         public AuthService(
             UserManager<AppUser> userManager,
             RoleManager<IdentityRole> roleManager,
             IConfiguration configuration,
-            IDistributedCache cache)
+            IDistributedCache cache,
+            IMailService mailService)
         {
             _userManager = userManager;
             _roleManager = roleManager;
             _configuration = configuration;
             _cache = cache;
+            _mailService = mailService;
         }
 
         public async Task<Result> RegisterAsync(string email, string password)
         {
             var userExists = await _userManager.FindByEmailAsync(email);
-            if (userExists != null)
-                return Result.Failure("User already exists!");
+            if (userExists != null) return Result.Failure("User already exists!");
 
-            AppUser user = new()
-            {
-                Email = email,
-                SecurityStamp = Guid.NewGuid().ToString(),
-                UserName = email
-            };
-
+            AppUser user = new() { Email = email, SecurityStamp = Guid.NewGuid().ToString(), UserName = email };
             var result = await _userManager.CreateAsync(user, password);
-            if (!result.Succeeded)
-                return Result.Failure("User creation failed!", result.Errors.Select(e => e.Description).ToList());
+            if (!result.Succeeded) return Result.Failure("User creation failed!", result.Errors.Select(e => e.Description).ToList());
 
-            if (!await _roleManager.RoleExistsAsync("User"))
-                await _roleManager.CreateAsync(new IdentityRole("User"));
-
+            if (!await _roleManager.RoleExistsAsync("User")) await _roleManager.CreateAsync(new IdentityRole("User"));
             await _userManager.AddToRoleAsync(user, "User");
 
-            return Result.Success("User created successfully!");
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var confirmationLink = $"http://localhost:8080/api/auth/confirm-email?userId={user.Id}&token={Uri.EscapeDataString(token)}";
+
+            await _mailService.SendEmailAsync(user.Email!, "E-posta Onayı",
+                $"Lütfen hesabınızı onaylamak için <a href='{confirmationLink}'>buraya tıklayın.</a>");
+
+            return Result.Success("Kayıt başarılı. Lütfen e-postanıza gönderilen onay linkine tıklayın.");
         }
 
         public async Task<Result<string>> LoginAsync(LoginDto request)
         {
             var user = await _userManager.FindByEmailAsync(request.Email);
-
-            if (user == null || !await _userManager.CheckPasswordAsync(user, request.Password))
-            {
-                return Result<string>.Failure("Invalid username or password");
-            }
+            if (user == null || !await _userManager.CheckPasswordAsync(user, request.Password)) return Result<string>.Failure("Invalid username or password");
+            if (!user.EmailConfirmed) return Result<string>.Failure("Email not verified. Please check your mailbox.");
 
             var cacheKey = $"active_token_{user.Id}";
-            var existingToken = await _cache.GetStringAsync(cacheKey);
-
-            if (!string.IsNullOrEmpty(existingToken))
-            {
-                if (!request.ForceRelogin)
-                {
-                    return Result<string>.Failure("There is already an active session for this user. Please use 'ForceRelogin' to log out from other devices.");
-                }
-                else
-                {
-                    await _cache.RemoveAsync(cacheKey);
-                }
-            }
-
-            var userRoles = await _userManager.GetRolesAsync(user);
-
-            var authClaims = new List<Claim>
-            {
-                new Claim(ClaimTypes.NameIdentifier, user.Id),
-                new Claim(ClaimTypes.Email, user.Email!),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            };
-
-            foreach (var userRole in userRoles)
-            {
-                authClaims.Add(new Claim(ClaimTypes.Role, userRole));
-            }
-
-            var token = GetToken(authClaims);
-            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-
-            var cacheOptions = new DistributedCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(3)
-            };
-            await _cache.SetStringAsync(cacheKey, tokenString, cacheOptions);
+            var tokenString = new JwtSecurityTokenHandler().WriteToken(GetToken(new List<Claim> { new Claim(ClaimTypes.NameIdentifier, user.Id), new Claim(ClaimTypes.Email, user.Email!) }));
+            await _cache.SetStringAsync(cacheKey, tokenString, new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(3) });
 
             return Result<string>.Success(tokenString, "Login successful");
         }
 
+        public async Task<Result> ConfirmEmailAsync(string userId, string token)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null) return Result.Failure("User not found.");
+            var result = await _userManager.ConfirmEmailAsync(user, token);
+            return result.Succeeded ? Result.Success("Email confirmed successfully!") : Result.Failure("Email confirmation failed.");
+        }
+
         private JwtSecurityToken GetToken(List<Claim> authClaims)
         {
-            var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
-
-            var token = new JwtSecurityToken(
-                issuer: _configuration["Jwt:Issuer"],
-                audience: _configuration["Jwt:Audience"],
-                expires: DateTime.Now.AddHours(3),
-                claims: authClaims,
-                signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
-            );
-
-            return token;
+            var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"] ?? "superSecretKey123456789"));
+            return new JwtSecurityToken(issuer: _configuration["Jwt:Issuer"], audience: _configuration["Jwt:Audience"], expires: DateTime.Now.AddHours(3), claims: authClaims, signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256));
         }
     }
 }

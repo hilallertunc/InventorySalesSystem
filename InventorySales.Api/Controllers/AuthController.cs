@@ -76,5 +76,17 @@ namespace InventorySales.Api.Controllers
 
             return Ok(new { isSuccess = true, message = "Logged out successfully." });
         }
+
+        [HttpGet("confirm-email")]
+        public async Task<IActionResult> ConfirmEmail([FromQuery] string userId, [FromQuery] string token)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(token))
+            {
+                return BadRequest("Invalid confirmation links.");
+            }
+
+            var result = await _authService.ConfirmEmailAsync(userId, token);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
     }
 }

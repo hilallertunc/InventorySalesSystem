@@ -21,7 +21,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\InventorySales.Domain\InventorySales.Domain.csproj" />
+	  <ProjectReference Include="..\InventorySales.Domain\InventorySales.Domain.csproj" />
   </ItemGroup>
+	
 
 </Project>

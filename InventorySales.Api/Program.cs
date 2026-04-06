@@ -7,39 +7,42 @@ using InventorySales.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
-using System;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default"),
-        npgsqlOptionsAction: sqlOptions =>
+        sqlOptions =>
         {
-            sqlOptions.EnableRetryOnFailure(
-                maxRetryCount: 5,
-                maxRetryDelay: TimeSpan.FromSeconds(5),
-                errorCodesToAdd: null);
+            sqlOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(5), null);
         }));
-
-builder.Services.AddScoped<CategoryRepository>();
-builder.Services.AddScoped<CategoryService>();
-builder.Services.AddScoped<ProductRepository>();
-builder.Services.AddScoped<ProductService>();
-builder.Services.AddScoped<IAuthService, AuthService>();
 
 builder.Services.AddIdentity<AppUser, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()
     .AddDefaultTokenProviders();
 
+builder.Services.AddScoped<CategoryRepository>();
+builder.Services.AddScoped<CategoryService>();
+builder.Services.AddScoped<ProductRepository>();
+builder.Services.AddScoped<ProductService>();
+builder.Services.AddScoped<OrderRepository>();
+builder.Services.AddScoped<OrderService>();
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IMailService, MailService>();
+builder.Services.AddScoped<ICacheService, RedisCacheService>();
+
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration.GetSection("RedisCacheSettings:ConnectionString").Value;
+    options.InstanceName = builder.Configuration.GetSection("RedisCacheSettings:InstanceName").Value;
+});
 
 builder.Services.AddAuthentication(options =>
 {
@@ -62,15 +65,6 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
-builder.Services.AddScoped<OrderRepository>();
-builder.Services.AddScoped<OrderService>();
-builder.Services.AddScoped<ICacheService, RedisCacheService>();
-
-builder.Services.AddStackExchangeRedisCache(options =>
-{
-    options.Configuration = builder.Configuration.GetSection("RedisCacheSettings:ConnectionString").Value;
-    options.InstanceName = builder.Configuration.GetSection("RedisCacheSettings:InstanceName").Value;
-});
 
 var app = builder.Build();
 
