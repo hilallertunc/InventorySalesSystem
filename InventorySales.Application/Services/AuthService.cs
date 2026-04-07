@@ -53,10 +53,10 @@ namespace InventorySales.Application.Services
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
             var confirmationLink = $"http://localhost:8080/api/auth/confirm-email?userId={user.Id}&token={Uri.EscapeDataString(token)}";
 
-            await _mailService.SendEmailAsync(user.Email!, "E-posta Onayı",
-                $"Lütfen hesabınızı onaylamak için <a href='{confirmationLink}'>buraya tıklayın.</a>");
+            await _mailService.SendEmailAsync(user.Email!, "Email Confirmation",
+                $"Please click <a href='{confirmationLink}'>here to confirm your account.</a>");
 
-            return Result.Success("Kayıt başarılı. Lütfen e-postanıza gönderilen onay linkine tıklayın.");
+            return Result.Success("Registration successful. Please click the confirmation link sent to your email address.");
         }
 
         public async Task<Result<string>> LoginAsync(LoginDto request)
@@ -66,6 +66,11 @@ namespace InventorySales.Application.Services
             if (!user.EmailConfirmed) return Result<string>.Failure("Email not verified. Please check your mailbox.");
 
             var cacheKey = $"active_token_{user.Id}";
+            var existingToken = await _cache.GetStringAsync(cacheKey);
+            if (!string.IsNullOrEmpty(existingToken) && !request.ForceRelogin)
+            {
+                return Result<string>.Failure("User is already active on another session.");
+            }
             var tokenString = new JwtSecurityTokenHandler().WriteToken(GetToken(new List<Claim> { new Claim(ClaimTypes.NameIdentifier, user.Id), new Claim(ClaimTypes.Email, user.Email!) }));
             await _cache.SetStringAsync(cacheKey, tokenString, new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(3) });
 
