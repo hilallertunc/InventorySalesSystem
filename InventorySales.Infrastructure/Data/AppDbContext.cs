@@ -20,12 +20,12 @@ namespace InventorySales.Infrastructure.Data
         public DbSet<Order> Orders => Set<Order>();
         public DbSet<OrderItem> OrderItems => Set<OrderItem>();
         public DbSet<LogEntry> Logs => Set<LogEntry>();
+        public DbSet<DataPatchHistory> DataPatchHistories => Set<DataPatchHistory>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
 
-            // records that are not deleted by default
             builder.Entity<Category>().HasQueryFilter(e => !e.IsDeleted);
             builder.Entity<Product>().HasQueryFilter(e => !e.IsDeleted);
             builder.Entity<Order>().HasQueryFilter(e => !e.IsDeleted);
@@ -42,9 +42,15 @@ namespace InventorySales.Infrastructure.Data
                 .WithMany()
                 .HasForeignKey(i => i.ProductId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<DataPatchHistory>(e =>
+            {
+                e.HasKey(x => x.Id);
+                e.Property(x => x.PatchName).IsRequired().HasMaxLength(500);
+                e.HasIndex(x => x.PatchName).IsUnique();
+            });
         }
 
-        //  Auditing and Soft Delete 
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             foreach (var entry in ChangeTracker.Entries<BaseEntity>())
@@ -58,7 +64,7 @@ namespace InventorySales.Infrastructure.Data
                     case EntityState.Modified:
                         entry.Entity.UpdatedAtUtc = DateTime.UtcNow;
                         break;
-                    case EntityState.Deleted: 
+                    case EntityState.Deleted:
                         entry.State = EntityState.Modified;
                         entry.Entity.IsDeleted = true;
                         entry.Entity.UpdatedAtUtc = DateTime.UtcNow;
